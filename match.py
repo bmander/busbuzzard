@@ -28,7 +28,7 @@ def trip_instances( points, header ):
 
 	yield tripInst
 
-def tripInst_date( tripInst, time_ix, tz ):
+def get_tripInst_date( tripInst, time_ix, tz ):
 	tripStart = datetime.fromtimestamp( float(tripInst[0][time_ix])/1000.0, tz )
 	return tripStart.date()
 
@@ -87,50 +87,72 @@ def trip_to_points( trip, stops ):
 			yield lon, lat, arrival_time
 		yield lon, lat, departure_time
 
+def tripinst_to_points( tripinst, lat_ix, lon_ix, time_ix, tz, day_cutoff=4*3600 ):
+	for point in tripinst:
+		lat = float(point[lat_ix])
+		lon = float(point[lon_ix])
+		dt = datetime.fromtimestamp( float(point[time_ix])/1000.0, tz )
+		secs_since_midnight = dt.hour*3600+dt.minute*60+dt.second+dt.microsecond/1000000.0
+		if secs_since_midnight < day_cutoff:
+			secs_since_midnight += 3600*24
+
+		yield (lon,lat,secs_since_midnight)
 
 def main(fn_in, gtfs_dir, route_id):
 	ll = Loader( gtfs_dir, load_stop_times=False )
 	sched = ll.Load()
 
-	# compile stop_id->(lat,lon) for convenience
-	stops = dict( [(stop.stop_id, (stop.stop_lat, stop.stop_lon)) for stop in sched.GetStopList()] )
+	# # compile stop_id->(lat,lon) for convenience
+	# stops = dict( [(stop.stop_id, (stop.stop_lat, stop.stop_lon)) for stop in sched.GetStopList()] )
 
-	# get all trip_ids corresponding to route_id
-	routes = dict( [(x.route_short_name, x) for x in sched.GetRouteList()] )
-	route = routes[ route_id ]
-	interesting_trip_ids = [trip.trip_id for trip in route.trips]
+	# # get all trip_ids corresponding to route_id
+	# routes = dict( [(x.route_short_name, x) for x in sched.GetRouteList()] )
+	# route = routes[ route_id ]
+	# interesting_trip_ids = [trip.trip_id for trip in route.trips]
 
-	# sift through the huge stop_times.txt file looking for stop_times that have one of those trip_ids,
-	# and group them by trip_id
-	print "grouping stop times by trip_id..."
-	stop_time_groups = compile_trips( gtfs_dir, interesting_trip_ids )
-	print "done"
+	# # sift through the huge stop_times.txt file looking for stop_times that have one of those trip_ids,
+	# # and group them by trip_id
+	# print "grouping stop times by trip_id..."
+	# stop_time_groups = compile_trips( gtfs_dir, interesting_trip_ids )
+	# print "done"
 
-	print "converting each trip to a shape, sorting by service id"
-	trip_shapes = {} # dict of service_id -> [(trip_id,shape),...]
-	for trip_id, stop_time_group in stop_time_groups.items():
-		shp = list( LineString( trip_to_points( stop_time_group, stops ) ) )
+	# print "converting each trip to a shape, sorting by service id"
+	# trip_shapes = {} # dict of service_id -> [(trip_id,shape),...]
+	# for trip_id, stop_time_group in stop_time_groups.items():
+	# 	shp = list( LineString( trip_to_points( stop_time_group, stops ) ) )
 
-		service_id = sched.GetTrip( trip_id ).service_id
+	# 	service_id = sched.GetTrip( trip_id ).service_id
 
-		if service_id not in trip_shapes:
-			trip_shapes[service_id] = []
-		trip_shapes[service_id].append( (trip_id, shp) )
-	print "done"
+	# 	if service_id not in trip_shapes:
+	# 		trip_shapes[service_id] = []
+	# 	trip_shapes[service_id].append( (trip_id, shp) )
+	# print "done"
 
-	tz = timezone('America/Los_Angeles')
+	tzname = sched.GetDefaultAgency().agency_timezone
+	tz = timezone( tzname )
 
 	rd = csv.reader( open(fn_in) )
 
 	header = rd.next()
 	time_ix = header.index("time")
+	lat_ix = header.index("lat")
+	lon_ix = header.index("lon")
 
 	start_date, end_date = [parse_gtfs_date(x) for x in sched.GetDateRange()]
 	# dict of date->[service periods]
 	serviceperiods = dict( sched.GetServicePeriodsActiveEachDate( start_date, end_date ) )
 
 	for i, tripInst in enumerate( trip_instances( rd, header ) ):
-		print serviceperiods.get( tripInst_date( tripInst, time_ix, tz ) )
+		tripInst_date = get_tripInst_date( tripInst, time_ix, tz )
+		service_periods = serviceperiods.get( tripInst_date )
+
+		if service_periods is None:
+			continue
+
+		tripinst_shape = list( tripinst_to_points( tripInst, lat_ix, lon_ix, time_ix, tz ) )
+		print tripinst_shape
+		for service_period in service_periods:
+			print "check tripInst %d against all trips in service id %s"%(i, service_period.service_id)
 
 
 if __name__=='__main__':
