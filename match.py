@@ -4,11 +4,11 @@ from time import gmtime
 from pytz import timezone
 from datetime import datetime, date
 import os
-from shapely.geometry import LineString 
+from shapely.geometry import LineString, Point
 import simplejson as json
 
 
-def trip_instances( points, header ):
+def get_trip_instances( points, header ):
 	# chops a list of points up into a list of trip instances
 	# this assumes the trip is ordered by time and trip instance
 
@@ -21,13 +21,13 @@ def trip_instances( points, header ):
 
 		if curTripInstId!=tripInstId:
 			if tripInstId is not None:
-				yield tripInst
+				yield tripInstId, tripInst
 			tripInst = []
 			tripInstId = point[tripInst_ix]
 
 		tripInst.append( point )
 
-	yield tripInst
+	yield tripInstId, tripInst
 
 def get_tripInst_date( tripInst, time_ix, tz ):
 	tripStart = datetime.fromtimestamp( float(tripInst[0][time_ix])/1000.0, tz )
@@ -99,7 +99,38 @@ def tripinst_to_points( tripinst, lat_ix, lon_ix, time_ix, tz, day_cutoff=4*3600
 
 		yield (lon,lat,secs_since_midnight)
 
-def main(fn_in, gtfs_dir, route_id):
+def dist(pt1, pt2):
+	return ((pt1.x-pt2.x)**2+(pt1.y-pt2.y)**2+(pt1.z-pt2.z)**2)**0.5
+
+def string_tension( base, comp, a=1,b=1,c=1 ):
+	"""find the 'tension' between two linestrings - a rough heuristic for the separation between them"""
+
+	base = LineString( [(x*a,y*b,z*c) for x,y,z in base] )
+	comp = [Point(x*a,y*b,z*c) for x,y,z in comp]
+
+	projections = [base.project(point) for point in comp]
+	interps = [base.interpolate(projection) for projection in projections]
+
+	dist_start = dist(comp[0],interps[0])
+	dist_end = dist(comp[-1],interps[-1])
+	return dist_start+dist_end
+
+	# dists = [dist(a,b) for a,b in zip(comp,interps)]
+	# return sum(dists)
+
+def string_unlikely_match( trip_shape, tripinst_shape ):
+	# if the tripinst ends a half hour before the trip starts
+	if tripinst_shape[-1][2] <= trip_shape[0][2]-60*30:
+		return True
+
+	# if if the tripinst starts a half hour after the trip ends
+	if tripinst_shape[0][2] >= trip_shape[-1][2]+60*30:
+		return True
+
+	# then they probably don't match; don't bother doing the more complicated tension search
+	return False
+
+def main(fn_in, gtfs_dir, route_id, fn_out):
 	ll = Loader( gtfs_dir, load_stop_times=False )
 	sched = ll.Load()
 
@@ -120,7 +151,7 @@ def main(fn_in, gtfs_dir, route_id):
 	print "converting each trip to a shape, sorting by service id"
 	trip_shapes = {} # dict of service_id -> [(trip_id,shape),...]
 	for trip_id, stop_time_group in stop_time_groups.items():
-		shp = LineString( list( trip_to_points( stop_time_group, stops ) ) )
+		shp = list( trip_to_points( stop_time_group, stops ) )
 
 		service_id = sched.GetTrip( trip_id ).service_id
 
@@ -143,7 +174,14 @@ def main(fn_in, gtfs_dir, route_id):
 	# dict of date->[service periods]
 	serviceperiods = dict( sched.GetServicePeriodsActiveEachDate( start_date, end_date ) )
 
-	for i, tripInst in enumerate( trip_instances( rd, header ) ):
+	print "loading up all trip instances at once..."
+	trip_instances = list(get_trip_instances(rd,header))
+	print "done"
+	n = len(trip_instances)
+	fpout = open( fn_out, "w" )
+	for i, (tripinst_id, tripInst) in enumerate( trip_instances ):
+		print "\r%d/%d"%(i+1,n),; sys.stdout.flush()
+
 		tripInst_date = get_tripInst_date( tripInst, time_ix, tz )
 		service_periods = serviceperiods.get( tripInst_date )
 
@@ -152,32 +190,34 @@ def main(fn_in, gtfs_dir, route_id):
 
 		tripinst_shape = list( tripinst_to_points( tripInst, lat_ix, lon_ix, time_ix, tz ) )
 
-		if len(tripinst_shape)<30:
-			continue
-
+		trip_scores = []
 		for service_period in service_periods:
-			print "check tripInst %d against all trips in service id %s"%(i, service_period.service_id)
+			#print "check tripInst %s against all trips in service id %s"%(tripinst_id, service_period.service_id)
 
 			for trip_id, trip_shape in trip_shapes[service_period.service_id]:
-				print "checking against shape for trip_id:%s"%trip_id
-				print tripinst_shape
-				print list(trip_shape.coords)
+				if string_unlikely_match( trip_shape, tripinst_shape ):
+					continue
 
-				fpout = open("linestrings.json","w")
-				fpout.write( json.dumps([tripinst_shape,list(trip_shape.coords)],indent=2 ) )
-				exit()
-		exit()
+				#print "checking against shape for trip_id:%s"%trip_id
+				trip_scores.append( (string_tension( trip_shape, tripinst_shape, a=1000,b=1000 ), trip_id) )
+
+		if len(trip_scores)==0:
+			continue
+		winner_trip_id = min( trip_scores, key=lambda x:x[0] )[1]
+
+		fpout.write( "%s,%s\n"%(tripinst_id, winner_trip_id) ); fpout.flush()
 
 
 if __name__=='__main__':
 	import sys
 
-	if len(sys.argv)<4:
-		print "usage: python cmd.py chained_csv_fn gtfs_dir route_id"
+	if len(sys.argv)<5:
+		print "usage: python cmd.py chained_csv_fn gtfs_dir route_id fn_out"
 		exit()
 
 	chained_csv_fn = sys.argv[1]
 	gtfs_dir = sys.argv[2]
 	route_id = sys.argv[3]
+	fn_out = sys.argv[4]
 
-	main( chained_csv_fn, gtfs_dir, route_id )
+	main( chained_csv_fn, gtfs_dir, route_id, fn_out )
