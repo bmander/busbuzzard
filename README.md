@@ -3,6 +3,8 @@ Busbuzzard
 
 Inference of probabilistic schedules from empirical data about transit vehicles.
 
+## Massage GPS data into a set of observed stop_time events
+
 #### Step 0: Get the data
 
 * A CSV of points logged from the NextBus API.
@@ -30,3 +32,47 @@ Inference of probabilistic schedules from empirical data about transit vehicles.
 #### Step 5: Compute passbys
 
 `$ python passby.py data/your_gtfs_dir data/your_gtfs_patterns.json data/route_27_chained.csv data/route_27_your_gtfs.matches data/route_27_your_gtfs_passbys.csv`
+
+## Visualize scheduled and observed stop_time events
+
+Run viz_stop.py without stop, pattern, or service_id qualifiers
+
+`python viz_stop.py data/route_5_fallwinter_passbys.csv data/sfmta_fallwinter_2012 data/sfmta_fallwinter_2012_patterns.json`
+
+Which complains that it needs a stop_id, but helpfully gives you some options, like:
+
+> Pick a stop. Here are some options:
+> stop:3923	 count:1386
+> stop:3927	 count:18021
+> stop:4228	 count:21447
+> stop:4229	 count:23270
+> stop:4224	 count:20978
+> stop:4225	 count:23290
+
+Pick one and run again with a stop
+
+`python viz_stop.py data/route_5_fallwinter_passbys.csv data/sfmta_fallwinter_2012 data/sfmta_fallwinter_2012_patterns.json 4228`
+
+Now it complains that you need a pattern, but supplies some, like:
+
+> Pick a pattern. Here are some options:
+> pattern:271	 count:1068
+> pattern:169	 count:18722
+> pattern:213	 count:1657
+
+Pick one and run again, then it compains that you need a service_id, on account of how a pattern can run on different service_ids
+
+`python viz_stop.py data/route_5_fallwinter_passbys.csv data/sfmta_fallwinter_2012 data/sfmta_fallwinter_2012_patterns.json 4228 169`
+
+> Pick a service_id. Here are some options:
+> service_id:1	 count:13714
+> service_id:3	 count:2544
+> service_id:2	 count:2464
+
+Finally select a service_id:
+
+`python viz_stop.py data/route_5_fallwinter_passbys.csv data/sfmta_fallwinter_2012 data/sfmta_fallwinter_2012_patterns.json 4228 169 1`
+
+Which brings up a pyplot window illustrating a timeline of every scheduled and observed event at stop 4228, on pattern 169, with a service_id of 1.
+
+![alt tag](https://raw.github.com/bmander/busbuzzard/branch/path/to/img.png)
