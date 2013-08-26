@@ -53,7 +53,7 @@ def main(gtfs_dir, fn_out):
 	for i, (pattern_sig, trip_ids) in enumerate( patterns_trips.items() ):
 		pattern_defs[i] = pattern_sig
 		for trip_id in trip_ids:
-			trip_patterns[trip_id] = i
+			trip_patterns[trip_id] = str(i)
 
 	print "%d patterns"%len(pattern_defs)
 	print "%d trips"%len(trip_patterns)
