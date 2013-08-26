@@ -120,6 +120,7 @@ def main(gtfs_dir, patterns_fn, chained_points_fn, match_fn, output_fn ):
 	lat_ix = header.index("lat")
 	lon_ix = header.index("lon")
 	time_ix = header.index("time")
+	secsSinceReport_ix = header.index("secsSinceReport")
 	for chain_id, chain in get_trip_instances( points, header ):
 		print chain_id
 
@@ -166,8 +167,8 @@ def main(gtfs_dir, patterns_fn, chained_points_fn, match_fn, output_fn ):
 		for (pt1, linref1), (pt2, linref2) in cons(zip(cleaned_chain, cleaned_linrefs)):
 			# print linref1, linref2
 			# print pt1, pt2
-			t1 = float(pt1[time_ix])/1000.0
-			t2 = float(pt2[time_ix])/1000.0
+			t1 = float(pt1[time_ix])/1000.0 - float(pt1[secsSinceReport_ix])
+			t2 = float(pt2[time_ix])/1000.0 - float(pt2[secsSinceReport_ix])
 			dt = (t2-t1)
 
 			for stop_id, stop_linref in trip_linrefs:
