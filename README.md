@@ -41,13 +41,13 @@ Run viz_stop.py without stop, pattern, or service_id qualifiers
 
 Which complains that it needs a stop_id, but helpfully gives you some options, like:
 
-> Pick a stop. Here are some options:
-> stop:3923	 count:1386
-> stop:3927	 count:18021
-> stop:4228	 count:21447
-> stop:4229	 count:23270
-> stop:4224	 count:20978
-> stop:4225	 count:23290
+>Pick a stop. Here are some options:<br>
+>stop:3923	 count:1386<br>
+>stop:3927	 count:18021<br>
+>stop:4228	 count:21447<br>
+>stop:4229	 count:23270<br>
+>stop:4224	 count:20978<br>
+>stop:4225	 count:23290<br>
 
 Pick one and run again with a stop
 
@@ -55,19 +55,19 @@ Pick one and run again with a stop
 
 Now it complains that you need a pattern, but supplies some, like:
 
-> Pick a pattern. Here are some options:
-> pattern:271	 count:1068
-> pattern:169	 count:18722
-> pattern:213	 count:1657
+>Pick a pattern. Here are some options:<br>
+>pattern:271	 count:1068<br>
+>pattern:169	 count:18722<br>
+>pattern:213	 count:1657<br>
 
 Pick one and run again, then it compains that you need a service_id, on account of how a pattern can run on different service_ids
 
 `python viz_stop.py data/route_5_fallwinter_passbys.csv data/sfmta_fallwinter_2012 data/sfmta_fallwinter_2012_patterns.json 4228 169`
 
-> Pick a service_id. Here are some options:
-> service_id:1	 count:13714
-> service_id:3	 count:2544
-> service_id:2	 count:2464
+>Pick a service_id. Here are some options:<br>
+>service_id:1	 count:13714<br>
+>service_id:3	 count:2544<br>
+>service_id:2	 count:2464<br>
 
 Finally select a service_id:
 
@@ -75,4 +75,4 @@ Finally select a service_id:
 
 Which brings up a pyplot window illustrating a timeline of every scheduled and observed event at stop 4228, on pattern 169, with a service_id of 1.
 
-![alt tag](https://raw.github.com/bmander/busbuzzard/branch/path/to/img.png)
+![alt tag](https://raw.github.com/bmander/busbuzzard/master/static/observed_schedule.png)
