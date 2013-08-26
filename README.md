@@ -8,10 +8,10 @@ Inference of probabilistic schedules from empirical data about transit vehicles.
 #### Step 0: Get the data
 
 * A CSV of points logged from the NextBus API.
-* For example: https://dl.dropboxusercontent.com/u/1158424/route_5.csv.zip
-* Try to find someone with a larger data dump, to get a larger data dump.
+  * For example: https://dl.dropboxusercontent.com/u/1158424/route_5.csv.zip
+  * Try to find someone with a larger data dump, to get a larger data dump.
 * An unzipped GTFS that describes the service recorded in the NextBus CSV
-* Try http://www.gtfs-data-exchange.com/ for current and past GTFS feeds
+  * Try http://www.gtfs-data-exchange.com/ for current and past GTFS feeds
 
 #### Step 1: Slice a route out of the NextBus CSV dump
 
