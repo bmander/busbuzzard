@@ -102,31 +102,31 @@ def main(fn_in, gtfs_dir, route_id):
 	ll = Loader( gtfs_dir, load_stop_times=False )
 	sched = ll.Load()
 
-	# # compile stop_id->(lat,lon) for convenience
-	# stops = dict( [(stop.stop_id, (stop.stop_lat, stop.stop_lon)) for stop in sched.GetStopList()] )
+	# compile stop_id->(lat,lon) for convenience
+	stops = dict( [(stop.stop_id, (stop.stop_lat, stop.stop_lon)) for stop in sched.GetStopList()] )
 
-	# # get all trip_ids corresponding to route_id
-	# routes = dict( [(x.route_short_name, x) for x in sched.GetRouteList()] )
-	# route = routes[ route_id ]
-	# interesting_trip_ids = [trip.trip_id for trip in route.trips]
+	# get all trip_ids corresponding to route_id
+	routes = dict( [(x.route_short_name, x) for x in sched.GetRouteList()] )
+	route = routes[ route_id ]
+	interesting_trip_ids = set([trip.trip_id for trip in route.trips])
 
-	# # sift through the huge stop_times.txt file looking for stop_times that have one of those trip_ids,
-	# # and group them by trip_id
-	# print "grouping stop times by trip_id..."
-	# stop_time_groups = compile_trips( gtfs_dir, interesting_trip_ids )
-	# print "done"
+	# sift through the huge stop_times.txt file looking for stop_times that have one of those trip_ids,
+	# and group them by trip_id
+	print "grouping stop times by trip_id..."
+	stop_time_groups = compile_trips( gtfs_dir, interesting_trip_ids )
+	print "done"
 
-	# print "converting each trip to a shape, sorting by service id"
-	# trip_shapes = {} # dict of service_id -> [(trip_id,shape),...]
-	# for trip_id, stop_time_group in stop_time_groups.items():
-	# 	shp = list( LineString( trip_to_points( stop_time_group, stops ) ) )
+	print "converting each trip to a shape, sorting by service id"
+	trip_shapes = {} # dict of service_id -> [(trip_id,shape),...]
+	for trip_id, stop_time_group in stop_time_groups.items():
+		shp = LineString( list( trip_to_points( stop_time_group, stops ) ) )
 
-	# 	service_id = sched.GetTrip( trip_id ).service_id
+		service_id = sched.GetTrip( trip_id ).service_id
 
-	# 	if service_id not in trip_shapes:
-	# 		trip_shapes[service_id] = []
-	# 	trip_shapes[service_id].append( (trip_id, shp) )
-	# print "done"
+		if service_id not in trip_shapes:
+			trip_shapes[service_id] = []
+		trip_shapes[service_id].append( (trip_id, shp) )
+	print "done"
 
 	tzname = sched.GetDefaultAgency().agency_timezone
 	tz = timezone( tzname )
@@ -150,9 +150,12 @@ def main(fn_in, gtfs_dir, route_id):
 			continue
 
 		tripinst_shape = list( tripinst_to_points( tripInst, lat_ix, lon_ix, time_ix, tz ) )
-		print tripinst_shape
 		for service_period in service_periods:
 			print "check tripInst %d against all trips in service id %s"%(i, service_period.service_id)
+
+			for trip_id, trip_shape in trip_shapes[service_period.service_id]:
+				print "checking against shape for trip_id:%s"%trip_id
+		exit()
 
 
 if __name__=='__main__':
