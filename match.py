@@ -5,6 +5,7 @@ from pytz import timezone
 from datetime import datetime, date
 import os
 from shapely.geometry import LineString 
+import simplejson as json
 
 
 def trip_instances( points, header ):
@@ -150,11 +151,21 @@ def main(fn_in, gtfs_dir, route_id):
 			continue
 
 		tripinst_shape = list( tripinst_to_points( tripInst, lat_ix, lon_ix, time_ix, tz ) )
+
+		if len(tripinst_shape)<30:
+			continue
+
 		for service_period in service_periods:
 			print "check tripInst %d against all trips in service id %s"%(i, service_period.service_id)
 
 			for trip_id, trip_shape in trip_shapes[service_period.service_id]:
 				print "checking against shape for trip_id:%s"%trip_id
+				print tripinst_shape
+				print list(trip_shape.coords)
+
+				fpout = open("linestrings.json","w")
+				fpout.write( json.dumps([tripinst_shape,list(trip_shape.coords)],indent=2 ) )
+				exit()
 		exit()
 
 
