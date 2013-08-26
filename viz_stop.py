@@ -3,6 +3,7 @@ import simplejson as json
 import os
 from pytz import timezone
 from datetime import datetime
+from transitfeed import Loader, util
 
 def get_trip_service_ids( gtfs_dir ):
 	fn = os.path.join( gtfs_dir, "trips.txt" )
@@ -30,6 +31,24 @@ def get_gtfs_timezone( gtfs_dir ):
 
 def get_secs_since_midnight( dt ):
 	return dt.hour*3600+dt.minute*60+dt.second+dt.microsecond/1000000.0
+
+def get_scheduled_secs( gtfs_dir, stop_id, interesting_trips ):
+	fn = os.path.join( gtfs_dir, "stop_times.txt")	
+	rd = csv.reader( open(fn) )
+
+	header = rd.next()
+	trip_id_ix = header.index("trip_id")
+	stop_id_ix = header.index("stop_id")
+	departure_time_ix = header.index("departure_time")
+
+	for row in rd:
+		if row[stop_id_ix] != stop_id:
+			continue
+
+		if row[trip_id_ix] not in interesting_trips:
+			continue
+
+		yield util.TimeToSecondsSinceMidnight( row[departure_time_ix] )
 
 def main(passby_fn, gtfs_dir, patterns_fn, stop_id=None, pattern_id=None, service_id=None):
 	trip_service_ids = dict(list(get_trip_service_ids( gtfs_dir )))
@@ -74,7 +93,8 @@ def main(passby_fn, gtfs_dir, patterns_fn, stop_id=None, pattern_id=None, servic
 			print "pattern:%s\t count:%s"%(pattern_id,count)
 		exit()
 
-	passbys = [pt for pt in passbys if trip_patterns[pt[trip_id_ix]]==pattern_id]
+	interesting_trips = set([tid for tid,pid in trip_patterns.items() if pid==pattern_id])
+	passbys = [pt for pt in passbys if pt[trip_id_ix] in interesting_trips]
 
 	# if 'service_id' isn't provided, list stop options and then exit
 	if service_id is None:
@@ -89,19 +109,26 @@ def main(passby_fn, gtfs_dir, patterns_fn, stop_id=None, pattern_id=None, servic
 			print "service_id:%s\t count:%s"%(service_id,count)
 		exit()
 
-	passbys = [pt for pt in passbys if trip_service_ids[pt[trip_id_ix]]==service_id]
+	interesting_trips = set([tid for tid in interesting_trips if trip_service_ids[tid]==service_id])
+	passbys = [pt for pt in passbys if pt[trip_id_ix] in interesting_trips]
 
 	passby_secs = []
 	for chain_id, trip_id, stop_id, time in passbys:
 		passby_dt = datetime.fromtimestamp( float(time), tz )
 
 		secs = get_secs_since_midnight( passby_dt )
+		if secs<4*3600:
+			secs += 24*3600
 
 		passby_secs.append( secs )
 
+	scheduled_secs = list(get_scheduled_secs( gtfs_dir, stop_id, interesting_trips ))
+
 	from matplotlib import pyplot as plt
 
-	plt.vlines( passby_secs, 0, 1, lw=0.05 )
+	plt.vlines( passby_secs, 0, 1.5, lw=0.05 )
+	plt.vlines( scheduled_secs, 0.5, 2, color="red" )
+
 	plt.show()
 
 
