@@ -1,5 +1,12 @@
 from gen_schedule import generate_schedule
 
+def parse_gtfs_date( datestr ):
+	year = datestr[0:4]
+	month = datestr[4:6]
+	day = datestr[6:]
+
+	return date(int(year),int(month),int(day))
+
 if __name__=='__main__':
 	import sys
 

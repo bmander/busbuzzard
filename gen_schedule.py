@@ -50,7 +50,7 @@ def get_scheduled_secs( gtfs_dir, stop_id, interesting_trips ):
 
 		yield util.TimeToSecondsSinceMidnight( row[departure_time_ix] )
 
-def generate_schedule(passby_fn, gtfs_dir, patterns_fn, stop_id=None, pattern_id=None, service_id=None):
+def generate_schedule(passby_fn, gtfs_dir, patterns_fn, stop_id=None, pattern_id=None, service_id=None, since_midnight=True):
 	trip_service_ids = dict(list(get_trip_service_ids( gtfs_dir )))
 	tz = get_gtfs_timezone( gtfs_dir )
 
@@ -114,11 +114,15 @@ def generate_schedule(passby_fn, gtfs_dir, patterns_fn, stop_id=None, pattern_id
 
 	passby_secs = []
 	for chain_id, trip_id, stop_id, time in passbys:
-		passby_dt = datetime.fromtimestamp( float(time), tz )
 
-		secs = get_secs_since_midnight( passby_dt )
-		if secs<4*3600:
-			secs += 24*3600
+		if since_midnight:	
+			passby_dt = datetime.fromtimestamp( float(time), tz )
+
+			secs = get_secs_since_midnight( passby_dt )
+			if secs<4*3600:
+				secs += 24*3600
+		else:
+			secs = float(time)
 
 		passby_secs.append( secs )
 
