@@ -76,3 +76,10 @@ Finally select a service_id:
 Which brings up a pyplot window illustrating a timeline of every scheduled and observed event at stop 4228, on pattern 169, with a service_id of 1.
 
 ![alt tag](https://raw.github.com/bmander/busbuzzard/branch/path/to/img.png)
+
+## Visualize empirical schedule
+
+`python viz_waits.py data/route_5_fallwinter_passbys.csv data/sfmta_fallwinter_2012/ data/sfmta_fallwinter_2012_patterns.json 4228 169 1`
+
+Creates a matplotlib window with contents like:
+
