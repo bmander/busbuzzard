@@ -12,25 +12,25 @@ def get_trip_instances( points, header ):
 	# chops a list of points up into a list of trip instances
 	# this assumes the trip is ordered by time and trip instance
 
-	tripInst_ix = header.index("tripInst")
+	tripinst_ix = header.index("tripInst")
 
-	tripInstId = None
+	tripinst_id = None
 
 	for point in points:
-		curTripInstId = point[tripInst_ix]
+		curtripinst_id = point[tripinst_ix]
 
-		if curTripInstId!=tripInstId:
-			if tripInstId is not None:
-				yield tripInstId, tripInst
-			tripInst = []
-			tripInstId = point[tripInst_ix]
+		if curtripinst_id!=tripinst_id:
+			if tripinst_id is not None:
+				yield tripinst_id, tripinst
+			tripinst = []
+			tripinst_id = point[tripinst_ix]
 
-		tripInst.append( point )
+		tripinst.append( point )
 
-	yield tripInstId, tripInst
+	yield tripinst_id, tripinst
 
-def get_tripInst_date( tripInst, time_ix, tz ):
-	tripStart = datetime.fromtimestamp( float(tripInst[0][time_ix])/1000.0, tz )
+def get_tripinst_date( tripinst, time_ix, tz ):
+	tripStart = datetime.fromtimestamp( float(tripinst[0][time_ix])/1000.0, tz )
 	return tripStart.date()
 
 class CheapGTFS(object):
@@ -179,20 +179,20 @@ def main(fn_in, gtfs_dir, route_id, fn_out):
 	print "done"
 	n = len(trip_instances)
 	fpout = open( fn_out, "w" )
-	for i, (tripinst_id, tripInst) in enumerate( trip_instances ):
+	for i, (tripinst_id, tripinst) in enumerate( trip_instances ):
 		print "\r%d/%d"%(i+1,n),; sys.stdout.flush()
 
-		tripInst_date = get_tripInst_date( tripInst, time_ix, tz )
-		service_periods = serviceperiods.get( tripInst_date )
+		tripinst_date = get_tripinst_date( tripinst, time_ix, tz )
+		service_periods = serviceperiods.get( tripinst_date )
 
 		if service_periods is None:
 			continue
 
-		tripinst_shape = list( tripinst_to_points( tripInst, lat_ix, lon_ix, time_ix, tz ) )
+		tripinst_shape = list( tripinst_to_points( tripinst, lat_ix, lon_ix, time_ix, tz ) )
 
 		trip_scores = []
 		for service_period in service_periods:
-			#print "check tripInst %s against all trips in service id %s"%(tripinst_id, service_period.service_id)
+			#print "check tripinst %s against all trips in service id %s"%(tripinst_id, service_period.service_id)
 
 			for trip_id, trip_shape in trip_shapes[service_period.service_id]:
 				if string_unlikely_match( trip_shape, tripinst_shape ):
