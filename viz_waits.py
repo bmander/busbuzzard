@@ -50,30 +50,29 @@ def get_waits( passby_secs, sample_dates, sample_time ):
 if __name__=='__main__':
 	import sys
 
-	if len(sys.argv) < 4:
-		print "usage: python cmd.py passby_fn gtfs_dir patterns_fn [stop_id [pattern_id [service_id]]]"
+	if len(sys.argv) < 3:
+		print "usage: python cmd.py passby_fn gtfs_dir [stop_id [direction_id [service_id]]]"
 		exit()
 
 	passby_fn = sys.argv[1]
 	gtfs_dir = sys.argv[2]
-	patterns_fn = sys.argv[3]
 
-	if len(sys.argv)>4:
-		stop_id = sys.argv[4]
+	if len(sys.argv)>3:
+		stop_id = sys.argv[3]
 	else:
 		stop_id = None
 
-	if len(sys.argv)>5:
-		pattern_id = sys.argv[5]
+	if len(sys.argv)>4:
+		direction_id = sys.argv[4]
 	else:
-		pattern_id = None
+		direction_id = None
 
-	if len(sys.argv)>6:
-		service_id = sys.argv[6]
+	if len(sys.argv)>5:
+		service_id = sys.argv[5]
 	else:
 		service_id = None
 
-	passby_secs, scheduled_secs = generate_schedule(passby_fn, gtfs_dir, patterns_fn, stop_id, pattern_id, service_id, since_midnight=False)
+	passby_secs, scheduled_secs = generate_schedule(passby_fn, gtfs_dir, stop_id, direction_id, service_id, since_midnight=False)
 
 	# parse the gtfs, so we can get all dates on which the service_id is active
 	ll = Loader( gtfs_dir, load_stop_times=False )
@@ -94,7 +93,11 @@ if __name__=='__main__':
 		print "\r%s/%s"%(mins,24*60),; sys.stdout.flush()
 		waits = get_waits( passby_secs, sample_dates, 60*mins)
 
-		quantiles = mquantiles( waits, [0.25,0.5,0.75,0.95] )
+		if len(waits) < 2:
+			quantiles = [0,0,0,0]
+		else:	
+			quantiles = mquantiles( waits, [0.25,0.5,0.75,0.95] )
+
 		sched.append( quantiles )
 
 	quanta = [x[0] for x in sched]

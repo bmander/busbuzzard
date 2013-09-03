@@ -10,31 +10,30 @@ def parse_gtfs_date( datestr ):
 if __name__=='__main__':
 	import sys
 
-	if len(sys.argv) < 4:
-		print "usage: python cmd.py passby_fn gtfs_dir patterns_fn [stop_id [pattern_id [service_id]]]"
+	if len(sys.argv) < 3:
+		print "usage: python cmd.py passby_fn gtfs_dir [stop_id [direction_id [service_id]]]"
 		exit()
 
 	passby_fn = sys.argv[1]
 	gtfs_dir = sys.argv[2]
-	patterns_fn = sys.argv[3]
 
-	if len(sys.argv)>4:
-		stop_id = sys.argv[4]
+	if len(sys.argv)>3:
+		stop_id = sys.argv[3]
 	else:
 		stop_id = None
 
-	if len(sys.argv)>5:
-		pattern_id = sys.argv[5]
+	if len(sys.argv)>4:
+		direction_id = sys.argv[4]
 	else:
-		pattern_id = None
+		direction_id = None
 
-	if len(sys.argv)>6:
-		service_id = sys.argv[6]
+	if len(sys.argv)>5:
+		service_id = sys.argv[5]
 	else:
 		service_id = None
 
 
-	passby_secs, scheduled_secs = generate_schedule(passby_fn, gtfs_dir, patterns_fn, stop_id, pattern_id, service_id)
+	passby_secs, scheduled_secs = generate_schedule(passby_fn, gtfs_dir, stop_id, direction_id, service_id)
 
 	from matplotlib import pyplot as plt
 

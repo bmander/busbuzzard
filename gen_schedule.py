@@ -5,16 +5,17 @@ from pytz import timezone
 from datetime import datetime
 from transitfeed import Loader, util
 
-def get_trip_service_ids( gtfs_dir ):
+def get_trips( gtfs_dir ):
 	fn = os.path.join( gtfs_dir, "trips.txt" )
 	rd = csv.reader( open(fn) )
 
 	header = rd.next()
 	trip_id_ix = header.index("trip_id")
 	service_id_ix = header.index("service_id")
+	direction_id_ix = header.index("direction_id")
 
 	for row in rd:
-		yield row[trip_id_ix], row[service_id_ix]
+		yield row[trip_id_ix], row[service_id_ix], row[direction_id_ix]
 
 def get_gtfs_timezone( gtfs_dir ):
 	fn = os.path.join( gtfs_dir, "agency.txt" )
@@ -50,11 +51,11 @@ def get_scheduled_secs( gtfs_dir, stop_id, interesting_trips ):
 
 		yield util.TimeToSecondsSinceMidnight( row[departure_time_ix] )
 
-def generate_schedule(passby_fn, gtfs_dir, patterns_fn, stop_id=None, pattern_id=None, service_id=None, since_midnight=True):
-	trip_service_ids = dict(list(get_trip_service_ids( gtfs_dir )))
+def generate_schedule(passby_fn, gtfs_dir, stop_id=None, direction_id=None, service_id=None, since_midnight=True):
+	trips = list( get_trips(gtfs_dir) )
+	trip_service_ids = dict( [(trip[0],trip[1]) for trip in trips] )
+	trip_direction_ids = dict( [(trip[0],trip[2]) for trip in trips] )
 	tz = get_gtfs_timezone( gtfs_dir )
-
-	patterns, trip_patterns = json.loads( open(patterns_fn).read() )
 
 	passby_rd = csv.reader( open(passby_fn) )
 	header = passby_rd.next()
@@ -80,20 +81,20 @@ def generate_schedule(passby_fn, gtfs_dir, patterns_fn, stop_id=None, pattern_id
 	# cut down the passbys to the provided stop
 	passbys = [pt for pt in passbys if pt[stop_id_ix]==stop_id]
 
-	# if 'pattern_id' isn't provided, list the count of passbys per apttern_id and then exit
-	if pattern_id is None:
-		print "Pick a pattern. Here are some options:"
-		pattern_counts = {}
+	# if 'direction_id' isn't provided, list the count of passbys per direction_id and then exit
+	if direction_id is None:
+		print "Pick a direction. Here are some options:"
+		direction_counts = {}
 		for chain_id, trip_id, stop_id, time in passbys:
-			pattern_id = trip_patterns[trip_id]
-			if pattern_id not in pattern_counts:
-				pattern_counts[pattern_id]=0
-			pattern_counts[pattern_id]+=1
-		for pattern_id, count in pattern_counts.items():
-			print "pattern:%s\t count:%s"%(pattern_id,count)
+			direction_id = trip_direction_ids[trip_id]
+			if direction_id not in direction_counts:
+				direction_counts[direction_id]=0
+			direction_counts[direction_id]+=1
+		for direction_id, count in direction_counts.items():
+			print "direction:%s\t count:%s"%(direction_id,count)
 		exit()
 
-	interesting_trips = set([tid for tid,pid in trip_patterns.items() if pid==pattern_id])
+	interesting_trips = set([tid for tid,did in trip_direction_ids.items() if did==direction_id])
 	passbys = [pt for pt in passbys if pt[trip_id_ix] in interesting_trips]
 
 	# if 'service_id' isn't provided, list stop options and then exit
@@ -133,31 +134,30 @@ def generate_schedule(passby_fn, gtfs_dir, patterns_fn, stop_id=None, pattern_id
 if __name__=='__main__':
 	import sys
 
-	if len(sys.argv) < 5:
-		print "usage: python cmd.py passby_fn gtfs_dir patterns_fn output_fn [stop_id [pattern_id [service_id]]]"
+	if len(sys.argv) < 4:
+		print "usage: python cmd.py passby_fn gtfs_dir output_fn [stop_id [direction_id [service_id]]]"
 		exit()
 
 	passby_fn = sys.argv[1]
 	gtfs_dir = sys.argv[2]
-	patterns_fn = sys.argv[3]
-	output_fn = sys.argv[4]
+	output_fn = sys.argv[3]
 
-	if len(sys.argv)>5:
-		stop_id = sys.argv[5]
+	if len(sys.argv)>4:
+		stop_id = sys.argv[4]
 	else:
 		stop_id = None
 
-	if len(sys.argv)>6:
-		pattern_id = sys.argv[6]
+	if len(sys.argv)>5:
+		direction_id = sys.argv[5]
 	else:
-		pattern_id = None
+		direction_id = None
 
-	if len(sys.argv)>7:
-		service_id = sys.argv[7]
+	if len(sys.argv)>6:
+		service_id = sys.argv[6]
 	else:
 		service_id = None
 
 
-	passby_secs, scheduled_secs = generate_schedule(passby_fn, gtfs_dir, patterns_fn, stop_id, pattern_id, service_id)
+	passby_secs, scheduled_secs = generate_schedule(passby_fn, gtfs_dir, stop_id, direction_id, service_id)
 
 	open( output_fn, "w" ).write( json.dumps([passby_secs,scheduled_secs]) )
