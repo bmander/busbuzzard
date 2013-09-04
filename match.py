@@ -6,7 +6,7 @@ from datetime import datetime, date
 import os
 from shapely.geometry import LineString, Point
 import simplejson as json
-
+import bisect
 
 def get_trip_instances( points, header ):
 	# chops a list of points up into a list of trip instances
@@ -16,7 +16,7 @@ def get_trip_instances( points, header ):
 
 	tripinst_id = None
 
-	for point in points:
+	for i, point in enumerate( points ):
 		curtripinst_id = point[tripinst_ix]
 
 		if curtripinst_id!=tripinst_id:
@@ -33,10 +33,6 @@ def get_tripinst_date( tripinst, time_ix, tz ):
 	tripStart = datetime.fromtimestamp( float(tripinst[0][time_ix])/1000.0, tz )
 	return tripStart.date()
 
-class CheapGTFS(object):
-	def __init__(self, gtfs_dir):
-		self.gtfs_dir = gtfs_dir
-
 def parse_gtfs_date( datestr ):
 	year = datestr[0:4]
 	month = datestr[4:6]
@@ -44,7 +40,142 @@ def parse_gtfs_date( datestr ):
 
 	return date(int(year),int(month),int(day))
 
-def compile_trips( gtfs_dir, interesting_trip_ids, verbose=True ):
+class Trip(object):
+	def __init__(self, trip_id, direction_id, service_id):
+		self.trip_id = trip_id
+		self.direction_id = direction_id
+		self.service_id = service_id
+		self.stop_times = []
+
+	def add_stoptime(self, trip_id, arrival_time, departure_time, stop_id, stop_sequence):
+		self.stop_times.append( (trip_id, arrival_time, departure_time, stop_id, stop_sequence) )
+
+	def _sort(self):
+		self.stop_times.sort( key=lambda x:x[4] )
+
+	def _to_points( self, stops, time=True ):
+		for trip_id,arrival_time,departure_time,stop_id,stop_sequence in self.stop_times:
+			lat, lon = stops[stop_id]
+
+			if time:
+				yield lon, lat, arrival_time
+			else:
+				yield lon, lat
+
+	def get_shape( self, stops, time=True ):
+		return list( self._to_points( stops, time ) )
+
+	def midway_time( self ):
+		start_time = self.stop_times[0][2]
+		end_time = self.stop_times[-1][1]
+
+		return (start_time+end_time)/2.0
+
+	def __float__(self):
+		return float(self.midway_time())
+
+	def __lt__( self, b ):
+		return float(self) < b
+
+	def __gt__( self, b ):
+		return float(self) > b
+
+	def __eq__( self, b ):
+		return float(self) == b
+
+	def __ne__( self, b ):
+		return float(self) != b
+
+	def __ge__( self, b ):
+		return float(self) >= b
+
+	def __le__( self, b ):
+		return float(self) <= b
+
+	def __repr__(self):
+		first_st = self.stop_times[0]
+		last_st = self.stop_times[-1]
+		return "<Trip id:%s dir:%s sid:%s %s@%s->%s@%s>"%(self.trip_id, self.direction_id, self.service_id, first_st[3],first_st[2],last_st[3],last_st[1])
+
+class TripGroup(object):
+	# A TripGroup is a set of trips that are equivalent at arrival time i.e. if you're waiting
+	# at a stop for a vehicle implementing one trip but a vehicle serving a different trip shows up
+	# it'll work.
+
+	# TripGroups are generally all the trips in a GTFS with the same route_id, service_id, and direction_id.
+
+	def __init__(self, direction_id, service_id):
+		self.direction_id = direction_id
+		self.service_id = service_id
+		self.trips = []
+		self.rep_shape_cache = None
+		self.sorted = False
+
+	def add_trip( self, trip ):
+		self.sorted = False
+		self.trips.append( trip )
+
+	def _sort(self):
+		self.trips.sort( key=lambda x:x.midway_time() )
+		self.sorted = True
+
+	@property
+	def rep_trip(self):
+		"""get a representitive trip"""
+		return self.trips[0]
+
+	def cache_rep_shape(self,stops):
+		self.rep_shape_cache = self.get_rep_shape(stops)
+
+	@property
+	def rep_shape(self):
+		if self.rep_shape_cache is None:
+			raise Exception("rep_shape not in cache; run cache_rep_shape() first")
+
+		return self.rep_shape_cache
+
+	def get_rep_shape(self, stops):
+		return LineString( self.rep_trip.get_shape(stops) )
+
+	def same_direction(self, points):
+		"""returns True if the string of points is traveling in the same direction as the tripgroup"""
+		start_point = Point( points[0] )
+		end_point = Point( points[-1] )	
+
+		return self.rep_shape.project( start_point ) < self.rep_shape.project( end_point )
+
+	def nearest(self, tt):
+		# find the position in the trip list closest to it
+		ix = bisect.bisect( self.trips, tt )
+
+		if ix==0:
+			return self.trips[0]
+		if ix==len(self.trips):
+			return self.trips[-1]
+
+		left = abs( float(self.trips[ix-1])-tt )
+		right = abs( float(self.trips[ix])-tt )
+
+		if left<right:
+			return self.trips[ix-1]
+		else:
+			return self.trips[ix]
+
+	def __repr__(self):
+		return "<TripGroup dir:%s sid:%s>"%(self.direction_id, self.service_id)
+
+def compile_trips( gtfs, gtfs_dir, route_short_name, verbose=True ):
+	# get the route object from the gtfs file corresponding to route_short_name
+	routes = dict( [(x.route_short_name, x) for x in gtfs.GetRouteList()] )
+	route = routes[ route_short_name ]
+
+	# generate a Trip object for each gtfs trip...
+	trips = {}
+	for gtfs_trip in route.trips:
+		trip = Trip( gtfs_trip.trip_id, gtfs_trip.direction_id, gtfs_trip.service_id )
+		trips[trip.trip_id]=trip
+
+	# fill out the trips with stop_times
 	fn = os.path.join( gtfs_dir, "stop_times.txt" )
 	fp = open( fn )
 	rd = csv.reader( fp )
@@ -57,13 +188,12 @@ def compile_trips( gtfs_dir, interesting_trip_ids, verbose=True ):
 	stop_id_ix        = header.index("stop_id")
 	stop_sequence_ix  = header.index("stop_sequence")
 
-	ret = {}
 	for i, row in enumerate( rd ):
 		if i%1000==0:
 			print "\r%d"%i,; sys.stdout.flush()
 
 		trip_id        = row[trip_id_ix]
-		if trip_id not in interesting_trip_ids:
+		if trip_id not in trips:
 			continue
 
 		arrival_time   = util.TimeToSecondsSinceMidnight( row[arrival_time_ix] )
@@ -71,22 +201,12 @@ def compile_trips( gtfs_dir, interesting_trip_ids, verbose=True ):
 		stop_id        = row[stop_id_ix]
 		stop_sequence  = int( row[stop_sequence_ix] )
 
-		if trip_id not in ret:
-			ret[trip_id] = []
+		trips[trip_id].add_stoptime( trip_id,arrival_time,departure_time,stop_id,stop_sequence )
 
-		ret[trip_id].append( (trip_id,arrival_time,departure_time,stop_id,stop_sequence) )
+	for trip in trips.values():
+		trip._sort()
 
-	return ret
-
-def trip_to_points( trip, stops ):
-	trip.sort( key=lambda x:x[4] )
-
-	for trip_id,arrival_time,departure_time,stop_id,stop_sequence in trip:
-		lat, lon = stops[stop_id]
-
-		if arrival_time != departure_time:
-			yield lon, lat, arrival_time
-		yield lon, lat, departure_time
+	return trips.values()
 
 def tripinst_to_points( tripinst, lat_ix, lon_ix, time_ix, tz, day_cutoff=4*3600 ):
 	for point in tripinst:
@@ -99,37 +219,6 @@ def tripinst_to_points( tripinst, lat_ix, lon_ix, time_ix, tz, day_cutoff=4*3600
 
 		yield (lon,lat,secs_since_midnight)
 
-def dist(pt1, pt2):
-	return ((pt1.x-pt2.x)**2+(pt1.y-pt2.y)**2+(pt1.z-pt2.z)**2)**0.5
-
-def string_tension( base, comp, a=1,b=1,c=1 ):
-	"""find the 'tension' between two linestrings - a rough heuristic for the separation between them"""
-
-	base = LineString( [(x*a,y*b,z*c) for x,y,z in base] )
-	comp = [Point(x*a,y*b,z*c) for x,y,z in comp]
-
-	projections = [base.project(point) for point in comp]
-	interps = [base.interpolate(projection) for projection in projections]
-
-	dist_start = dist(comp[0],interps[0])
-	dist_end = dist(comp[-1],interps[-1])
-	return dist_start+dist_end
-
-	# dists = [dist(a,b) for a,b in zip(comp,interps)]
-	# return sum(dists)
-
-def string_unlikely_match( trip_shape, tripinst_shape ):
-	# if the tripinst ends a half hour before the trip starts
-	if tripinst_shape[-1][2] <= trip_shape[0][2]-60*30:
-		return True
-
-	# if if the tripinst starts a half hour after the trip ends
-	if tripinst_shape[0][2] >= trip_shape[-1][2]+60*30:
-		return True
-
-	# then they probably don't match; don't bother doing the more complicated tension search
-	return False
-
 def main(fn_in, gtfs_dir, route_id, fn_out):
 	ll = Loader( gtfs_dir, load_stop_times=False )
 	sched = ll.Load()
@@ -137,27 +226,31 @@ def main(fn_in, gtfs_dir, route_id, fn_out):
 	# compile stop_id->(lat,lon) for convenience
 	stops = dict( [(stop.stop_id, (stop.stop_lat, stop.stop_lon)) for stop in sched.GetStopList()] )
 
-	# get all trip_ids corresponding to route_id
-	routes = dict( [(x.route_short_name, x) for x in sched.GetRouteList()] )
-	route = routes[ route_id ]
-	interesting_trip_ids = set([trip.trip_id for trip in route.trips])
-
 	# sift through the huge stop_times.txt file looking for stop_times that have one of those trip_ids,
 	# and group them by trip_id
-	print "grouping stop times by trip_id..."
-	stop_time_groups = compile_trips( gtfs_dir, interesting_trip_ids )
+	print "reading gtfs stop_times into trips..."
+	trips = compile_trips( sched, gtfs_dir, route_id )
 	print "done"
 
-	print "converting each trip to a shape, sorting by service id"
-	trip_shapes = {} # dict of service_id -> [(trip_id,shape),...]
-	for trip_id, stop_time_group in stop_time_groups.items():
-		shp = list( trip_to_points( stop_time_group, stops ) )
+	print "filing trips away into affinity groups..."
+	tripgroups = {}
+	for trip in trips:
+		sig = (trip.direction_id, trip.service_id)
+		if sig not in tripgroups:
+			tripgroups[sig] = TripGroup( trip.direction_id, trip.service_id )
+		tripgroups[sig].add_trip( trip )
 
-		service_id = sched.GetTrip( trip_id ).service_id
+	for tripgroup in tripgroups.values():
+		tripgroup._sort()
+		tripgroup.cache_rep_shape(stops)
+	print "done"
 
-		if service_id not in trip_shapes:
-			trip_shapes[service_id] = []
-		trip_shapes[service_id].append( (trip_id, shp) )
+	print "indexing tripgroups by service id..."
+	serviceid_tripgroups = {}
+	for (direction_id, service_id), tripgroup in tripgroups.items():
+		if service_id not in serviceid_tripgroups:
+			serviceid_tripgroups[service_id] = []
+		serviceid_tripgroups[service_id].append( tripgroup )
 	print "done"
 
 	tzname = sched.GetDefaultAgency().agency_timezone
@@ -174,13 +267,11 @@ def main(fn_in, gtfs_dir, route_id, fn_out):
 	# dict of date->[service periods]
 	serviceperiods = dict( sched.GetServicePeriodsActiveEachDate( start_date, end_date ) )
 
-	print "loading up all trip instances at once..."
-	trip_instances = list(get_trip_instances(rd,header))
-	print "done"
-	n = len(trip_instances)
+	print "matching trip instances with trips..."
 	fpout = open( fn_out, "w" )
-	for i, (tripinst_id, tripinst) in enumerate( trip_instances ):
-		print "\r%d/%d"%(i+1,n),; sys.stdout.flush()
+	for i, (tripinst_id, tripinst) in enumerate( get_trip_instances(rd,header) ):
+		if i%100==0:
+			print "\r%d"%(i+1,),; sys.stdout.flush()
 
 		tripinst_date = get_tripinst_date( tripinst, time_ix, tz )
 		service_periods = serviceperiods.get( tripinst_date )
@@ -188,24 +279,44 @@ def main(fn_in, gtfs_dir, route_id, fn_out):
 		if service_periods is None:
 			continue
 
-		tripinst_shape = list( tripinst_to_points( tripinst, lat_ix, lon_ix, time_ix, tz ) )
+	 	tripinst_shape = list( tripinst_to_points( tripinst, lat_ix, lon_ix, time_ix, tz ) )
+	 	# print "tripinst shape %s"%tripinst_shape
 
-		trip_scores = []
+		#pick out the tripinst midpoint
+		start_time = tripinst_shape[0][2]
+		end_time = tripinst_shape[-1][2]
+
+		# print "start time %s"%start_time
+		# print "end time %s"%end_time
+
+		mid_time = (end_time+start_time)/2.0
+
+	 	matched_trips = []	
+	 	# for each service period running on the day of tripinst
 		for service_period in service_periods:
-			#print "check tripinst %s against all trips in service id %s"%(tripinst_id, service_period.service_id)
+			# print "checking service period ", service_period.service_id
+			# find the tripgroup running on that service period 
+			for tripgroup in serviceid_tripgroups.get(service_period.service_id,[]):
+				# print "checking with trip group ", tripgroup
+				# print "same direction?"
+				if tripgroup.same_direction( tripinst_shape ):
+					# print "yes"
+					# print "tripgroup candidate trips..."
+					# for trip in tripgroup.trips:
+					# 	print trip
 
-			for trip_id, trip_shape in trip_shapes[service_period.service_id]:
-				if string_unlikely_match( trip_shape, tripinst_shape ):
-					continue
+					# print "looking for nearest trip to %s"%mid_time
+					nearest_trip = tripgroup.nearest( mid_time )
+					# print "nearest trip: ", nearest_trip
+					matched_trips.append( nearest_trip )
 
-				#print "checking against shape for trip_id:%s"%trip_id
-				trip_scores.append( (string_tension( trip_shape, tripinst_shape, a=1000,b=1000 ), trip_id) )
-
-		if len(trip_scores)==0:
+		if len(matched_trips)==0:
 			continue
-		winner_trip_id = min( trip_scores, key=lambda x:x[0] )[1]
 
-		fpout.write( "%s,%s\n"%(tripinst_id, winner_trip_id) ); fpout.flush()
+		matched_trip = min(matched_trips, key=lambda x:abs(float(x)-mid_time))
+
+		fpout.write( "%s,%s\n"%(tripinst_id, matched_trip.trip_id) ); fpout.flush()
+	print "done"
 
 
 if __name__=='__main__':
