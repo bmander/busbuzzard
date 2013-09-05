@@ -24,27 +24,18 @@ def main(fn_in, fn_out):
 	fpout = open(fn_out,"w")
 
 	rd = csv.reader( open( fn_in ) )
-	header = rd.next()
 
-	vehicleId_ix = header.index("id")
-	time_ix = header.index("time")
-	dirTag_ix = header.index("dirTag")
+	vehicleId_ix,time_ix,routeTag_ix,dirTag_ix,lon_ix,lat_ix = 0,1,2,3,4,5
 
-	print "reading all points...",; sys.stdout.flush()
-	all_points = list(rd)
-	print "done"
-
-	print "sorting by time, vehicleid...",; sys.stdout.flush()
-	all_points.sort( key=lambda x:(x[vehicleId_ix],float(x[time_ix])) )
-	print "done"
-
-	fpout.write( ",".join( header + ["tripInst"]) )
-	fpout.write( "\n" )
 	last_vehicleId=None
 	last_dirTag=None
 	last_time=0.0
 	cur_trip = 0
-	for pt in all_points:
+	print "chaining GPS points..."
+	for i, pt in enumerate( rd ):
+		if i%1000==0:
+			print "\r%d"%i,;sys.stdout.flush()	 
+
 		vehicleId = pt[vehicleId_ix]
 		dirTag = pt[dirTag_ix]
 		time = float(pt[time_ix])
@@ -53,13 +44,13 @@ def main(fn_in, fn_out):
 
 		if vehicleId!=last_vehicleId:
 			cur_trip += 1
-			print "new trip %d from vehicleId %s"%(cur_trip,vehicleId)
+			#print "new trip %d from vehicleId %s"%(cur_trip,vehicleId)
 		elif dirTag!=last_dirTag:
 			cur_trip += 1
-			print "new trip %d from dirTag %s"%(cur_trip,dirTag)
+			#print "new trip %d from dirTag %s"%(cur_trip,dirTag)
 		elif pause>SPLIT_PAUSE:
 			cur_trip += 1
-			print "new trip %d from pause %fs"%(cur_trip,pause/1000.0)
+			#print "new trip %d from pause %fs"%(cur_trip,pause/1000.0)
 
 		pt.append( str(cur_trip	) )
 		fpout.write( ",".join(pt) )
@@ -68,6 +59,7 @@ def main(fn_in, fn_out):
 		last_dirTag = dirTag
 		last_time = time
 		last_vehicleId = vehicleId
+	print "done"
 
 if __name__=='__main__':
 	if len(sys.argv)<3:
